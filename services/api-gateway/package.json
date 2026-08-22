@@ -1,0 +1,25 @@
+{
+  "name": "api-gateway",
+  "version": "1.0.0",
+  "description": "SmartSplit - API Gateway: JWT auth verification, request routing, rate limiting",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "jest --runInBand"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.4.1",
+    "http-proxy-middleware": "^2.0.7",
+    "jsonwebtoken": "^9.0.2",
+    "smartsplit": "file:../.."
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^7.2.2"
+  }
+}

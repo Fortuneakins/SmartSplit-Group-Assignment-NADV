@@ -1,0 +1,25 @@
+{
+  "name": "smartsplit",
+  "version": "1.0.0",
+  "description": "SmartSplit - distributed, service-oriented group expense splitting system (NADV 744 group assignment)",
+  "private": true,
+  "scripts": {
+   "install:all": "npm install --prefix services/api-gateway && npm install --prefix services/user-service && npm install --prefix services/expense-service && npm install --prefix services/settlement-service && npm install",
+    "migrate": "npm run migrate --prefix services/user-service",
+    "dev": "concurrently -n gateway,user,expense,settlement -c blue,green,yellow,magenta \"npm run dev --prefix services/api-gateway\" \"npm run dev --prefix services/user-service\" \"npm run dev --prefix services/expense-service\" \"npm run dev --prefix services/settlement-service\"",
+    "start": "concurrently -n gateway,user,expense,settlement -c blue,green,yellow,magenta \"npm start --prefix services/api-gateway\" \"npm start --prefix services/user-service\" \"npm start --prefix services/expense-service\" \"npm start --prefix services/settlement-service\"",
+    "test": "npm test --prefix services/user-service && npm test --prefix services/expense-service && npm test --prefix services/settlement-service && npm test --prefix services/api-gateway",
+    "perf-test": "node scripts/perf-test.js",
+    "db:up": "docker compose up -d postgres",
+    "frontend:install": "npm install --prefix frontend",
+    "frontend:dev": "npm run dev --prefix frontend",
+    "frontend:build": "npm run build --prefix frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "dotenv": "^16.4.7"
+  }
+}
