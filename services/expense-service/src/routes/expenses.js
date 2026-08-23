@@ -2,6 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const pool = require('../db');
 const requireAuth = require('../middleware/requireAuth');
+const { computeSplits, ensureSplitMembersAreInGroup, badRequest } = require('../lib/splitLogic');
 
 const router = express.Router();
 
@@ -18,6 +19,12 @@ function isRetryable(err) {
   return !status || status >= 500 || ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN'].includes(err.code);
 }
 
+/**
+ * GET wrapper around axios with bounded retries + exponential backoff for
+ * calls to user-service. Only retries on network failures / 5xx responses
+ * (never on 4xx, which represent a real client error that retrying won't fix).
+ * Surfaces a clean 503 to our own caller instead of an opaque axios error.
+ */
 async function serviceGet(url, config = {}) {
   let lastError;
   for (let attempt = 0; attempt <= SERVICE_RETRIES; attempt += 1) {
@@ -46,116 +53,13 @@ async function getGroupMemberIds(groupId) {
   return data.map((member) => member.id);
 }
 
-function ensureSplitMembersAreInGroup(memberIds, groupMemberIds) {
-  if (!Array.isArray(memberIds) || memberIds.length === 0) {
-    throw badRequest('memberIds must contain at least one group member');
-  }
-
-  const unique = [...new Set(memberIds)];
-  if (unique.length !== memberIds.length) {
-    throw badRequest('memberIds must not contain duplicates');
-  }
-
-  const allowed = new Set(groupMemberIds);
-  const invalid = unique.filter((id) => !allowed.has(id));
-  if (invalid.length) {
-    throw badRequest('all expense participants must already be members of this group');
-  }
-}
-
 /**
- * Computes each member's owed amount for a given split.
- * - equal: amount is split evenly across memberIds
- * - exact: caller supplies exact per-user amounts, must sum to amount
- * - percentage: caller supplies percentages, must sum to 100; the final
- *   cent is reconciled so stored shares always sum exactly to the expense.
+ * Validates and normalises the body of a create/update expense request,
+ * checking group membership (via user-service) and delegating the actual
+ * split-share arithmetic to splitLogic.computeSplits. Throws a badRequest
+ * (400) or a 403 error on any validation failure; the route handler is
+ * responsible only for catching that and persisting the result.
  */
-function computeSplits(amount, splitType, memberIds, splitInput) {
-  const round2 = (n) => Math.round(n * 100) / 100;
-
-  if (splitType === 'equal') {
-    if (!Array.isArray(memberIds) || memberIds.length === 0) {
-      throw badRequest('memberIds is required for an equal split');
-    }
-    const totalCents = Math.round(amount * 100);
-    const n = memberIds.length;
-    const baseCents = Math.floor(totalCents / n);
-    const remainderCents = totalCents - baseCents * n;
-
-    return memberIds.map((userId, idx) => ({
-      userId,
-      amountOwed: (baseCents + (idx < remainderCents ? 1 : 0)) / 100,
-    }));
-  }
-
-  if (splitType === 'exact') {
-    if (!splitInput || typeof splitInput !== 'object' || Array.isArray(splitInput)) {
-      throw badRequest('splitInput (userId -> amount) is required for an exact split');
-    }
-    const splits = Object.entries(splitInput).map(([userId, raw]) => {
-      const amountOwed = Number(raw);
-      if (!Number.isFinite(amountOwed) || amountOwed < 0) throw badRequest('exact split amounts must be non-negative numbers');
-      return { userId, amountOwed: round2(amountOwed) };
-    });
-    const total = round2(splits.reduce((s, x) => s + x.amountOwed, 0));
-    if (Math.abs(total - amount) > 0.001) {
-      throw badRequest(`exact split amounts (${total}) must sum to the expense total (${amount})`);
-    }
-    return splits;
-  }
-
-  if (splitType === 'percentage') {
-    if (!splitInput || typeof splitInput !== 'object' || Array.isArray(splitInput)) {
-      throw badRequest('splitInput (userId -> percentage) is required for a percentage split');
-    }
-
-    const entries = Object.entries(splitInput).map(([userId, raw]) => {
-      const pct = Number(raw);
-      if (!Number.isFinite(pct) || pct < 0) throw badRequest('percentages must be non-negative numbers');
-      return { userId, pct };
-    });
-    const totalPct = round2(entries.reduce((s, x) => s + x.pct, 0));
-    if (Math.abs(totalPct - 100) > 0.001) {
-      throw badRequest(`percentages must sum to 100, got ${totalPct}`);
-    }
-
-    // Work in cents and reconcile the final share. This prevents a legitimate
-    // percentage split such as 33.33/33.33/33.34 of R1.00 from becoming
-    // R0.99 after per-member rounding and later breaking settlement.
-    const totalCents = Math.round(amount * 100);
-    const rawShares = entries.map((entry) => ({
-      ...entry,
-      exactCents: (entry.pct / 100) * totalCents,
-    }));
-    const floors = rawShares.map((x) => Math.floor(x.exactCents));
-    let assigned = floors.reduce((s, x) => s + x, 0);
-    let remainder = totalCents - assigned;
-
-    // Largest remainder method: distribute leftover cents to the largest
-    // fractional parts so the result is deterministic and fair.
-    const order = rawShares
-      .map((x, idx) => ({ idx, fraction: x.exactCents - floors[idx] }))
-      .sort((a, b) => b.fraction - a.fraction || a.idx - b.idx);
-    for (const item of order) {
-      if (remainder <= 0) break;
-      floors[item.idx] += 1;
-      assigned += 1;
-      remainder -= 1;
-    }
-
-    return rawShares.map((entry, idx) => ({ userId: entry.userId, amountOwed: floors[idx] / 100 }));
-  }
-
-  throw badRequest(`unknown split_type "${splitType}", expected equal | exact | percentage`);
-}
-
-function badRequest(message) {
-  const err = new Error(message);
-  err.status = 400;
-  err.expose = true;
-  return err;
-}
-
 async function validateExpenseInput(groupId, requesterId, body) {
   const { description, amount, splitType, paidBy, memberIds, splitInput } = body;
 
@@ -334,6 +238,12 @@ router.delete('/groups/:groupId/expenses/:expenseId', requireAuth, async (req, r
 });
 
 // --- Internal: net balance per member for a group (paid - owed), used by settlement-service ---
+// NOTE: intentionally has no requireAuth. This route is only ever reached via
+// the internal Docker/localhost network (settlement-service calling directly),
+// never through the API Gateway, which does not proxy any /internal/* path.
+// It carries no user-supplied identity and returns no data beyond one group's
+// aggregate balances, so it is safe to leave unauthenticated for this
+// service-to-service call pattern (see README section 1 for the network topology).
 router.get('/internal/groups/:groupId/net-balances', async (req, res, next) => {
   try {
     const { groupId } = req.params;
@@ -365,4 +275,3 @@ router.get('/internal/groups/:groupId/net-balances', async (req, res, next) => {
 });
 
 module.exports = router;
-module.exports.computeSplits = computeSplits;

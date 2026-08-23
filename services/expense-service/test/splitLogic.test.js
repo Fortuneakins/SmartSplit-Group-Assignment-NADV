@@ -1,4 +1,4 @@
-const { computeSplits } = require('../src/routes/expenses');
+const { computeSplits, ensureSplitMembersAreInGroup } = require('../src/lib/splitLogic');
 
 describe('computeSplits', () => {
   test('equal split divides evenly and sums back to the total', () => {
@@ -31,6 +31,10 @@ describe('computeSplits', () => {
     expect(amounts[2] - amounts[0]).toBeLessThanOrEqual(0.0100001);
   });
 
+  test('equal split requires at least one member', () => {
+    expect(() => computeSplits(100, 'equal', [], null)).toThrow(/memberIds is required/);
+  });
+
   test('exact split accepts amounts that sum to the total', () => {
     const splits = computeSplits(100, 'exact', null, { a: 60, b: 40 });
     expect(splits).toEqual(
@@ -45,6 +49,10 @@ describe('computeSplits', () => {
     expect(() => computeSplits(100, 'exact', null, { a: 60, b: 30 })).toThrow(/must sum/);
   });
 
+  test('exact split rejects a negative amount (regression)', () => {
+    expect(() => computeSplits(100, 'exact', null, { a: 120, b: -20 })).toThrow(/non-negative/);
+  });
+
   test('percentage split converts percentages to amounts', () => {
     const splits = computeSplits(200, 'percentage', null, { a: 25, b: 75 });
     expect(splits.find((s) => s.userId === 'a').amountOwed).toBe(50);
@@ -55,17 +63,35 @@ describe('computeSplits', () => {
     expect(() => computeSplits(200, 'percentage', null, { a: 25, b: 50 })).toThrow(/sum to 100/);
   });
 
+  test('percentage split rejects a negative percentage (regression)', () => {
+    expect(() => computeSplits(200, 'percentage', null, { a: 120, b: -20 })).toThrow(/non-negative/);
+  });
+
+  test('percentage split reconciles cents exactly so settlement balances still net to zero', () => {
+    const splits = computeSplits(1, 'percentage', ['a', 'b', 'c'], { a: 33.33, b: 33.33, c: 33.34 });
+    const total = splits.reduce((sum, s) => sum + s.amountOwed, 0);
+    expect(Math.round(total * 100) / 100).toBe(1);
+  });
+
   test('rejects an unknown split type', () => {
     expect(() => computeSplits(100, 'weird', ['a'], null)).toThrow(/unknown split_type/);
   });
-
-  test('equal split requires at least one member', () => {
-    expect(() => computeSplits(100, 'equal', [], null)).toThrow(/memberIds is required/);
-  });
 });
 
-test('percentage split reconciles cents exactly so settlement balances still net to zero', () => {
-  const splits = computeSplits(1, 'percentage', ['a', 'b', 'c'], { a: 33.33, b: 33.33, c: 33.34 });
-  const total = splits.reduce((sum, s) => sum + s.amountOwed, 0);
-  expect(Math.round(total * 100) / 100).toBe(1);
+describe('ensureSplitMembersAreInGroup', () => {
+  test('accepts a set of memberIds that are all in the group', () => {
+    expect(() => ensureSplitMembersAreInGroup(['a', 'b'], ['a', 'b', 'c'])).not.toThrow();
+  });
+
+  test('rejects an empty memberIds list', () => {
+    expect(() => ensureSplitMembersAreInGroup([], ['a', 'b'])).toThrow(/at least one group member/);
+  });
+
+  test('rejects duplicate memberIds (regression)', () => {
+    expect(() => ensureSplitMembersAreInGroup(['a', 'a', 'b'], ['a', 'b', 'c'])).toThrow(/duplicates/);
+  });
+
+  test('rejects a memberId who is not actually in the group', () => {
+    expect(() => ensureSplitMembersAreInGroup(['a', 'z'], ['a', 'b', 'c'])).toThrow(/already be members/);
+  });
 });
