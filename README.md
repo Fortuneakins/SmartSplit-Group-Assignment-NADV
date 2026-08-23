@@ -209,11 +209,16 @@ npm test
 cd services/settlement-service && npm test
 ```
 
-**Current coverage: 46 tests, all passing** across:
-- `settlement-service`: 6 algorithm unit tests + 4 integration tests
-- `expense-service`: 8 split-logic unit tests + 5 integration tests (via 2 extra regression tests, 15 total)
+**Current coverage: 55 tests, all passing** across:
+- `settlement-service`: 6 algorithm unit tests + 4 integration tests (10 total)
+- `expense-service`: 17 split-logic unit tests (`src/lib/splitLogic.js`, framework-free) + 7 integration tests (24 total)
 - `user-service`: 14 integration tests (register/login/groups/membership + auth failure paths)
 - `api-gateway`: 7 integration tests (routing, auth enforcement, 404 handling)
+
+Split-calculation and split-validation logic lives in its own dependency-free module
+(`services/expense-service/src/lib/splitLogic.js`), separate from the Express route layer
+(`routes/expenses.js`), so it can be unit-tested without a server or database and reused
+without duplicating business logic.
 
 ### Performance & scalability
 
