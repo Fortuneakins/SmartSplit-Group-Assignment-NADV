@@ -1,23 +1,21 @@
 /**
- * Optimisation Engine
+ * Settlement Optimisation Engine
  * -----------------------------------------------------------------------
- * Given each member's net balance within a group, produce the SMALLEST
- * possible list of payments that settles all debts.
+ * Given each member's net balance within a group, produce a small payment
+ * plan that settles all outstanding balances.
  *
- * This is the "Optimal Account Balancing" problem (equivalent to LeetCode
- * 465). It is NP-hard in general - finding the true minimum is done with
- * DFS + branch-and-bound over the *connected components* of the debt
- * graph, which in practice is fast because real friend/expense groups
- * split into several small independent clusters of non-zero balances.
+ * For small groups, the service uses DFS with branch-and-bound to search
+ * for the true minimum number of transactions.
  *
- * For very large single components (many members all tangled together)
- * the search space is bounded with a configurable ceiling; beyond that we
- * fall back to a fast greedy heuristic (documented future improvement:
- * a polynomial approximation for very large single clusters).
+ * For larger groups, exhaustive search can become computationally expensive,
+ * so the service falls back to a greedy creditor/debtor matching strategy.
+ *
+ * All calculations are performed in integer cents to avoid floating-point
+ * rounding errors when dealing with monetary values.
  */
 
 const CENTS = 100; // work in integer cents to avoid floating point drift
-const EXHAUSTIVE_SEARCH_LIMIT = 12; // max members in one connected component for exact DFS
+const EXHAUSTIVE_SEARCH_LIMIT = 12;  // maximum members for exact DFS
 
 function toCents(amount) {
   return Math.round(amount * CENTS);
@@ -68,13 +66,15 @@ function minimiseTransactions(balances) {
 }
 
 /**
- * Every member's balance only interacts with the balances of people they
- * (indirectly) share an expense with; here all we have is a flat balance
- * list with no edges, so instead of a graph we treat the whole non-zero
- * set as one component unless it is trivially separable. We still expose
- * this as a separate step so alternative callers (e.g. a future per-edge
- * ledger) can plug in real connected-component detection.
+ * Returns the balance entries as a single component.
+ *
+ * The current settlement input contains only net balances, not the
+ * underlying expense graph, so true graph-based component detection
+ * is not possible here. Keeping this step separate makes it possible
+ * to introduce graph-based optimisation later without changing the
+ * main algorithm.
  */
+
 function splitIntoComponents(entries) {
   return [entries];
 }

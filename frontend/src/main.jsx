@@ -50,7 +50,19 @@ function Logo() {
 
 function Toast({ toast, onClose }) {
   if (!toast) return null;
-  return <div className={`toast ${toast.type || 'success'}`}><Icon name={toast.type === 'error' ? 'x' : 'check'} size={17}/><span>{toast.message}</span><button onClick={onClose}>×</button></div>;
+
+  return (
+    <div className={`toast ${toast.type || 'success'}`}>
+      <Icon
+        name={toast.type === 'error' ? 'x' : 'check'}
+        size={17}
+      />
+
+      <span>{toast.message}</span>
+
+      <button onClick={onClose}>×</button>
+    </div>
+  );
 }
 
 function Auth({ onAuth }) {
@@ -111,11 +123,41 @@ function App() {
 function Shell({ toast, user, groups, selectedGroup, setSelectedGroup, page, setPage, mobileOpen, setMobileOpen, logout, loadGroups, loading, notify }) {
   return <div className="app-shell"><aside className={`sidebar ${mobileOpen?'open':''}`}><div className="side-top"><Logo/><button className="close-mobile" onClick={()=>setMobileOpen(false)}><Icon name="x"/></button></div><nav>
     <div className="nav-label">WORKSPACE</div>
-    <NavItem icon="grid" label="Overview" active={page==='dashboard'} onClick={()=>setPage('dashboard')}/>
-    <NavItem icon="receipt" label="Expenses" active={page==='expenses'} onClick={()=>setPage('expenses')}/>
-    <NavItem icon="wallet" label="Balances & Settle" active={page==='settlement'} onClick={()=>setPage('settlement')}/>
-    <NavItem icon="users" label="Members" active={page==='members'} onClick={()=>setPage('members')}/>
-    <div className="nav-label group-label">YOUR GROUPS</div>
+   <NavItem
+  icon="grid"
+  label="Overview"
+  active={page === 'dashboard'}
+  onClick={() => setPage('dashboard')}
+/>
+
+<NavItem
+  icon="receipt"
+  label="Expenses"
+  active={page === 'expenses'}
+  onClick={() => setPage('expenses')}
+/>
+
+<NavItem
+  icon="wallet"
+  label="Balances & Settle"
+  active={page === 'settlement'}
+  onClick={() => setPage('settlement')}
+/>
+
+<NavItem
+  icon="users"
+  label="Members"
+  active={page === 'members'}
+  onClick={() => setPage('members')}
+/>
+
+<NavItem
+  icon="users"
+  label="Groups"
+  active={page === 'groups'}
+  onClick={() => setPage('groups')}
+/>
+ <div className="nav-label group-label">YOUR GROUPS</div>
     {groups.length === 0 && <div className="empty-nav">No groups yet</div>}
     {groups.slice(0,5).map(g=><button key={g.id} className={`group-nav ${selectedGroup?.id===g.id?'active':''}`} onClick={()=>{setSelectedGroup(g);setPage('dashboard')}}><span className="group-dot"></span>{g.name}</button>)}
   </nav><div className="side-bottom"><div className="system-status"><span></span><div><strong>System online</strong><small>API Gateway · :3000</small></div></div><button className="logout" onClick={logout}><Icon name="logout" size={17}/> Sign out</button></div></aside>
@@ -171,8 +213,183 @@ function Members({group,user,notify}){const [members,setMembers]=useState([]);co
 
 function Settlement({group,notify}){const [balances,setBalances]=useState([]);const [history,setHistory]=useState([]);const [result,setResult]=useState(null);const [busy,setBusy]=useState(true);const load=async()=>{setBusy(true);try{const [b,h]=await Promise.all([api(`/api/groups/${group.id}/balances`),api(`/api/groups/${group.id}/settlements`)]);setBalances(b);setHistory(h)}catch(e){notify(e.message,'error')}finally{setBusy(false)}};useEffect(()=>{load()},[group.id]);const settle=async()=>{try{const r=await api(`/api/groups/${group.id}/settle`,{method:'POST'});setResult(r);await load();notify('Settlement optimised and saved')}catch(e){notify(e.message,'error')}};const creditors=balances.filter(b=>b.balance>0).reduce((s,b)=>s+b.balance,0);const debtors=balances.filter(b=>b.balance<0).reduce((s,b)=>s+Math.abs(b.balance),0);return <div><SectionHeading eyebrow="SETTLEMENT ENGINE" title="Balances & Settle" subtitle="Turn group balances into the minimum practical set of payments." action={<button className="primary" onClick={settle} disabled={busy}><Icon name="bolt" size={17}/> Optimise settlement</button>}/><div className="settlement-banner"><div className="settle-visual"><div className="settle-icon"><Icon name="bolt" size={27}/></div><div><strong>Minimum-transactions optimisation</strong><p>SmartSplit calculates net balances and produces a payment plan designed to minimise the number of transfers.</p></div></div><div className="algorithm"><span>ALGORITHM</span><strong>{result?.algorithm || history[0]?.algorithm || 'min-transactions'}</strong></div></div><div className="balance-grid"><Card title="Who is owed" subtitle="Positive net balance"><BalanceList balances={balances.filter(b=>b.balance>0)} positive/></Card><Card title="Who owes" subtitle="Negative net balance"><BalanceList balances={balances.filter(b=>b.balance<0)} /></Card></div>{result&&<Card title="Latest settlement" subtitle={`Saved ${new Date(result.created_at||Date.now()).toLocaleString('en-ZA')}`}><div className="payment-plan">{result.payments.length===0?<div className="zero-state"><Icon name="check" size={22}/><strong>Everyone is settled.</strong><span>No payments are required.</span></div>:result.payments.map((p,i)=><div className="payment-row" key={i}><div className="payment-person"><span className="avatar small">{initials(p.fromName)}</span><strong>{p.fromName}</strong></div><Icon name="arrow" size={19}/><div className="payment-person"><span className="avatar small">{initials(p.toName)}</span><strong>{p.toName}</strong></div><strong className="payment-amount">{money(p.amount)}</strong></div>)}</div></Card>}<Card title="Settlement history" subtitle="Persisted optimisation results"><div className="history-list">{history.length===0?<div className="empty-state">No settlements generated yet.</div>:history.map(h=><div className="history-row" key={h.id}><div><strong>Settlement {shortId(h.id)}</strong><small>{new Date(h.created_at).toLocaleString('en-ZA')}</small></div><span>{h.total_payments} payment{h.total_payments===1?'':'s'}</span><b>{h.algorithm}</b></div>)}</div></Card><div className="balance-foot"><span>Total positive balance <strong>{money(creditors)}</strong></span><span>Total debt <strong>{money(debtors)}</strong></span></div></div>}
 
-function Groups({groups,onGroups,setSelectedGroup,notify}){const [name,setName]=useState('');const [busy,setBusy]=useState(false);const create=async(e)=>{e.preventDefault();setBusy(true);try{const g=await api('/api/groups',{method:'POST',body:JSON.stringify({name})});setName('');await onGroups();setSelectedGroup(g);notify('Group created successfully')}catch(e){notify(e.message,'error')}finally{setBusy(false)}};return <div><SectionHeading eyebrow="WORKSPACE" title="Groups" subtitle="Create and switch between the groups you manage."/><div className="groups-layout"><Card title="Create a group" subtitle="You will automatically become its first member"><form className="create-group" onSubmit={create}><label>Group name<input required value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Cape Town Weekend"/></label><button className="primary" disabled={busy}>{busy?'Creating…':'Create group'} <Icon name="plus" size={16}/></button></form></Card><div className="group-cards">{groups.map(g=><button className="group-card" key={g.id} onClick={()=>setSelectedGroup(g)}><span className="group-icon">{g.name.slice(0,1).toUpperCase()}</span><span><strong>{g.name}</strong><small>Created {new Date(g.created_at).toLocaleDateString('en-ZA')}</small></span><Icon name="chevron" size={18}/></button>)}</div></div></div>}
+function Groups({
+  groups,
+  onGroups,
+  setSelectedGroup,
+  notify,
+}) {
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
 
+  const create = async (e) => {
+    e.preventDefault();
+
+    setBusy(true);
+
+    try {
+      const g = await api('/api/groups', {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+      });
+
+      setName('');
+      await onGroups();
+      setSelectedGroup(g);
+
+      notify('Group created successfully');
+    } catch (e) {
+      notify(e.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteGroup = async (group) => {
+    const confirmed = window.confirm(
+      `Delete "${group.name}"?\n\nThis will permanently delete the group, its members, expenses and settlement history. This cannot be undone.`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      await api(`/api/groups/${group.id}`, {
+        method: 'DELETE',
+      });
+
+      setSelectedGroup(null);
+      await onGroups();
+
+      notify(`"${group.name}" deleted successfully`);
+    } catch (e) {
+      notify(e.message, 'error');
+    }
+  };
+
+  const leaveGroup = async (group) => {
+    const confirmed = window.confirm(
+      `Leave "${group.name}"?`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      await api(`/api/groups/${group.id}/leave`, {
+        method: 'DELETE',
+      });
+
+      setSelectedGroup(null);
+      await onGroups();
+
+      notify(`You left "${group.name}"`);
+    } catch (e) {
+      notify(e.message, 'error');
+    }
+  };
+
+  return (
+    <div>
+      <SectionHeading
+        eyebrow="WORKSPACE"
+        title="Groups"
+        subtitle="Create, switch between and manage your groups."
+      />
+
+      <div className="groups-layout">
+
+        <Card
+          title="Create a group"
+          subtitle="You will automatically become its first member"
+        >
+          <form className="create-group" onSubmit={create}>
+            <label>
+              Group name
+
+              <input
+                required
+                value={name}
+                onChange={e => setName(e.target.value)}
+                placeholder="e.g. Cape Town Weekend"
+              />
+            </label>
+
+            <button
+              className="primary"
+              disabled={busy}
+            >
+              {busy ? 'Creating…' : 'Create group'}
+              <Icon name="plus" size={16} />
+            </button>
+          </form>
+        </Card>
+
+        <div className="group-cards">
+
+          {groups.length === 0 ? (
+            <div className="empty-state">
+              You don't belong to any groups yet.
+            </div>
+          ) : (
+            groups.map(g => (
+              <div
+                className="group-card"
+                key={g.id}
+              >
+                <button
+                  className="group-card-main"
+                  onClick={() => {
+                    setSelectedGroup(g);
+                  }}
+                >
+                  <span className="group-icon">
+                    {g.name.slice(0, 1).toUpperCase()}
+                  </span>
+
+                  <span>
+                    <strong>{g.name}</strong>
+
+                    <small>
+                      Created{' '}
+                      {new Date(g.created_at).toLocaleDateString('en-ZA')}
+                    </small>
+                  </span>
+
+                  <Icon name="chevron" size={18} />
+                </button>
+
+                <div className="group-card-actions">
+
+                  {g.created_by ===
+                  JSON.parse(
+                    localStorage.getItem('smartsplit_user') || '{}'
+                  ).id ? (
+                    <button
+                      className="icon-action danger"
+                      title="Delete group"
+                      onClick={() => deleteGroup(g)}
+                    >
+                      <Icon name="trash" size={16} />
+                    </button>
+                  ) : (
+                    <button
+                      className="icon-action danger"
+                      title="Leave group"
+                      onClick={() => leaveGroup(g)}
+                    >
+                      <Icon name="logout" size={16} />
+                    </button>
+                  )}
+
+                </div>
+              </div>
+            ))
+          )}
+
+        </div>
+      </div>
+    </div>
+  );
+}
 function ExpenseTable({expenses,empty,detailed,onEdit,onDelete}){if(!expenses?.length)return <div className="empty-state">{empty}</div>;return <div className="table-wrap"><table><thead><tr><th>Expense</th><th>Paid by</th><th>Split</th><th>Amount</th><th>Date</th>{detailed&&<th>Actions</th>}</tr></thead><tbody>{expenses.map(e=><tr key={e.id}><td><strong>{e.description}</strong><small>{shortId(e.id)}</small></td><td>{e.paidByName||shortId(e.paid_by)}</td><td><span className="type-pill">{e.splitType||e.split_type}</span></td><td><strong>{money(e.amount)}</strong></td><td>{new Date(e.createdAt||e.created_at).toLocaleDateString('en-ZA')}</td>{detailed&&<td><div className="row-actions"><button className="icon-action" title="Edit expense" onClick={()=>onEdit?.(e)}><Icon name="edit" size={15}/></button><button className="icon-action danger" title="Delete expense" onClick={()=>onDelete?.(e)}><Icon name="trash" size={15}/></button></div></td>}</tr>)}</tbody></table></div>}
 function BalanceMini({balances,userId}){if(!balances?.length)return <div className="empty-state">No balances yet.</div>;return <div className="mini-balances">{balances.slice(0,6).map(b=><div className="mini-row" key={b.userId}><div className="avatar small">{initials(b.fullName)}</div><span><strong>{b.userId===userId?'You':b.fullName}</strong><small>{b.balance>0?'gets back':b.balance<0?'owes':'settled'}</small></span><b className={b.balance>0?'positive':b.balance<0?'negative':''}>{b.balance>0?'+':''}{money(b.balance)}</b></div>)}</div>}
 function BalanceList({balances,positive}){if(!balances.length)return <div className="empty-state">Nobody here yet.</div>;return <div className="balance-list">{balances.map(b=><div className="balance-row" key={b.userId}><div className="avatar small">{initials(b.fullName)}</div><span><strong>{b.fullName}</strong><small>{positive?'is owed':'owes the group'}</small></span><b className={positive?'positive':'negative'}>{positive?'+':''}{money(b.balance)}</b></div>)}</div>}

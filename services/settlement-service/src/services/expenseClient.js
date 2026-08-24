@@ -1,3 +1,13 @@
+/**
+ * Service-to-service client for the settlement service.
+ *
+ * Provides a small abstraction around HTTP calls to the expense and
+ * user services. Requests use timeouts and retry transient failures
+ * so settlement operations do not hang indefinitely when a downstream
+ * service is temporarily unavailable.
+ */
+
+
 const axios = require('axios');
 
 const EXPENSE_SERVICE_URL = process.env.EXPENSE_SERVICE_URL || 'http://localhost:3002';
@@ -8,6 +18,13 @@ const SERVICE_RETRIES = Number(process.env.SERVICE_RETRIES || 2);
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+/**
+ * Determines whether a failed HTTP request is safe to retry.
+ *
+ * Network failures and 5xx responses are treated as transient.
+ * Client errors such as 400/401/403/404 are returned immediately
+ * because retrying them will not normally change the outcome.
+ */
 
 function isRetryable(err) {
   const status = err.response?.status;

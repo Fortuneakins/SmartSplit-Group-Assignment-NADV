@@ -1,3 +1,23 @@
+## NADV 744 Assignment
+
+SmartSplit is a service-driven expense management system developed for
+the NADV 744 Advanced Development Systems group assignment.
+
+The system demonstrates:
+
+- REST-based service-oriented architecture
+- API Gateway
+- JWT authentication
+- PostgreSQL persistence
+- React frontend
+- Equal, exact and percentage expense splitting
+- Settlement optimisation
+- Automated unit and integration testing
+- Performance and scalability testing
+- Error handling and transaction management
+- Git/GitHub version control
+
+
 # SmartSplit
 
 A distributed, service-oriented group expense-splitting system, built for the NADV 744
